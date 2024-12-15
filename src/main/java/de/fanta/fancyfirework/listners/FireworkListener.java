@@ -1,5 +1,7 @@
 package de.fanta.fancyfirework.listners;
 
+import com.destroystokyo.paper.event.entity.EntityAddToWorldEvent;
+import com.google.common.base.Objects;
 import de.fanta.fancyfirework.FancyFirework;
 import de.fanta.fancyfirework.events.FireworkDeathEvent;
 import de.fanta.fancyfirework.fireworks.AbstractFireWork;
@@ -15,6 +17,9 @@ import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.DoubleChest;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
@@ -35,14 +40,19 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerEggThrowEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.BlockInventoryHolder;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MerchantRecipe;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -164,6 +174,27 @@ public class FireworkListener implements Listener {
     }
 
     @EventHandler
+    public void onEquip(PlayerInteractEvent e) {
+        ItemStack handStack = e.getItem();
+        if (handStack == null || e.getHand() == null) {
+            return;
+        }
+        final EquipmentSlot armorItemSlot = handStack.getType().getEquipmentSlot();
+        if (armorItemSlot != EquipmentSlot.HEAD) {
+            return;
+        }
+
+        final PlayerInventory inventory = e.getPlayer().getInventory();
+        final ItemStack headStack = inventory.getItem(armorItemSlot);
+        AbstractFireWork fireWork = plugin.getRegistry().getByItemStack(headStack);
+        if (fireWork instanceof BlockFireWork blockFireWork) {
+            if (blockFireWork.hasActiveTask(e.getPlayer())) {
+                e.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         ItemStack stack = event.getPlayer().getInventory().getHelmet();
         AbstractFireWork fireWork = plugin.getRegistry().getByItemStack(stack);
@@ -224,11 +255,11 @@ public class FireworkListener implements Listener {
 
     private void damageFNS(Player player, EquipmentSlot slot) {
         ItemStack stack = player.getEquipment().getItem(slot);
-        if (player.getGameMode() != GameMode.CREATIVE) {
+        if (player.getGameMode() != GameMode.CREATIVE || stack.getItemMeta().isUnbreakable()) {
             ItemMeta meta = stack.getItemMeta();
             int maxDurability = stack.getType().getMaxDurability();
             if (maxDurability > 0) {
-                int durability = meta.getEnchantLevel(Enchantment.DURABILITY);
+                int durability = meta.getEnchantLevel(Enchantment.UNBREAKING);
                 if (durability <= 0 || RandomUtil.SHARED_RANDOM.nextInt(durability + 1) == 0) {
                     Damageable damageableMeta = (Damageable) meta;
                     int damageOld = damageableMeta.getDamage();
@@ -278,7 +309,7 @@ public class FireworkListener implements Listener {
                 List<ItemStack> stackList = new ArrayList<>();
                 stackList.add(stack);
                 stand.setLastDamageCause(e);
-                FireworkDeathEvent fireworkDeathEvent = new FireworkDeathEvent(stand, stackList);
+                FireworkDeathEvent fireworkDeathEvent = new FireworkDeathEvent(stand, stackList, e.getDamageSource());
                 player.getServer().getPluginManager().callEvent(fireworkDeathEvent);
                 if (fireworkDeathEvent.isCancelled()) {
                     e.setCancelled(true);
@@ -390,5 +421,35 @@ public class FireworkListener implements Listener {
         recipe.addIngredient(new ItemStack(Material.EMERALD, minprice + random.nextInt(maxprice - minprice)));
         recipes.add(random.nextInt(recipes.size() + 1), recipe);
         trader.setRecipes(recipes);
+    }
+
+    @EventHandler
+    public void InventoryOpenEvent(InventoryOpenEvent e) {
+        InventoryHolder holder = e.getInventory().getHolder();
+        if (holder instanceof BlockInventoryHolder || holder instanceof DoubleChest || e.getInventory().getType() == InventoryType.ENDER_CHEST) {
+            int modifyCount = 0;
+            ItemStack[] storage = e.getInventory().getStorageContents();
+            for (int i = 0; i < storage.length; i++) {
+                ItemStack newStack = plugin.getFireWorkWorks().fixFirework(storage[i]);
+                if (!Objects.equal(storage[i], newStack)) {
+                    storage[i] = newStack;
+                    modifyCount++;
+                }
+            }
+            if (modifyCount > 0) {
+                e.getInventory().setStorageContents(storage);
+            }
+        }
+    }
+
+    @EventHandler
+    public void EntityAddToWorld(EntityAddToWorldEvent e) {
+        Entity entity = e.getEntity();
+        AbstractFireWork fireWork = plugin.getRegistry().getByEntity(entity);
+        if (fireWork instanceof BlockFireWork blockFireWork) {
+            if (blockFireWork.hasActiveTask(entity)) {
+                plugin.getScheduler().runOnEntityDelayed(entity, () -> blockFireWork.getActiveTask(entity).stop(), 1);
+            }
+        }
     }
 }

@@ -1,7 +1,7 @@
 package de.fanta.fancyfirework;
 
+import de.fanta.fancyfirework.fireworks.AbstractFireWork;
 import de.fanta.fancyfirework.listners.AFKListener;
-import de.fanta.fancyfirework.schedular.CancellableTask;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
@@ -12,13 +12,11 @@ import org.bukkit.World;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.util.Vector;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Random;
-import java.util.UUID;
 import java.util.logging.Level;
 
 public class FireWorkWorks {
@@ -63,7 +61,7 @@ public class FireWorkWorks {
         boolean sky = loc.getBlockY() > toppos.getBlockY();
         PlayerInfo playerInfo = AFKListener.playerTimes.get(p);
         if (sky && (p.getGameMode() == GameMode.SURVIVAL || p.getGameMode() == GameMode.ADVENTURE) && !FancyFirework.getPlugin().isVanish(p) && !playerInfo.afk) {
-            Firework firework = (Firework) world.spawnEntity(loc, EntityType.FIREWORK);
+            Firework firework = (Firework) world.spawnEntity(loc, EntityType.FIREWORK_ROCKET);
             firework.setVelocity(new Vector((rand.nextBoolean() ? 1 : -1) * rand.nextDouble(0.01), rand.nextDouble(0.5, 1.5), (rand.nextBoolean() ? 1 : -1) * rand.nextDouble(0.01)));
             FireworkMeta fireworkMeta = firework.getFireworkMeta();
             FireworkEffect effect = FireworkEffect.builder().with(FireworkEffect.Type.values()[rand.nextInt(FireworkEffect.Type.values().length)]).withColor(randomColor()).withFade(randomColor()).withFlicker().withTrail().build();
@@ -106,6 +104,19 @@ public class FireWorkWorks {
         int green = (int) (Math.random() * 256);
         int blue = (int) (Math.random() * 256);
         return Color.fromRGB(red, green, blue);
+    }
+
+    public ItemStack fixFirework(ItemStack item) {
+        if (item == null) {
+            return item;
+        }
+        AbstractFireWork fireWork = plugin.getRegistry().getByItemStack(item);
+        if (fireWork != null) {
+            ItemStack fireWorkItem = fireWork.getItemStack();
+            fireWorkItem.setAmount(item.getAmount());
+            return fireWorkItem;
+        }
+       return item;
     }
 }
 
